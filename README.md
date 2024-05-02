@@ -1,0 +1,5 @@
+# Getting Started
+
+GET http://localhost:8181/api/v1/weather    
+Content-Type: application/json
+
