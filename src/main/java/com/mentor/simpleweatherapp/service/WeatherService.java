@@ -7,15 +7,15 @@ import com.mentor.simpleweatherapp.util.Util;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 
 @RequiredArgsConstructor
 @Service
@@ -26,24 +26,30 @@ public class WeatherService {
     private final ExecutorService executorService = Executors.newFixedThreadPool(2);
 
     public WeatherCountriesDto getWeather() {
+        return getWeather("Kyiv", "London", "Paris", "Krakow");
+    }
+
+    public WeatherCountriesDto getWeather(String... cities) {
+        Function<String, CompletableFuture<WeatherServiceTask>> stringCompletableFutureFunction = city
+                -> CompletableFuture.supplyAsync(() -> new WeatherServiceTask(city), executorService)
+                                    .orTimeout(5, TimeUnit.SECONDS)
+                                    .exceptionally(e -> {
+                                        System.out.println("Timeout expired");
+
+                                        return new WeatherServiceTask();
+                                    });
+
+        List<CompletableFuture<WeatherServiceTask>> listCompletableFuture = Arrays.stream(cities)
+                .map(stringCompletableFutureFunction)
+                .toList();
+
+        CompletableFuture<Void> allFutures = CompletableFuture.allOf(listCompletableFuture.toArray(new CompletableFuture[0]));
+        var allWeatherCountriesFuture = allFutures.thenApply(v -> listCompletableFuture.stream()
+                    .map(CompletableFuture::join)
+                    .toList());
+
         try {
-            Future<WeatherDetailDto> t1 = executorService.submit(new WeatherServiceTask("Kyiv"));
-            Future<WeatherDetailDto> t2 = executorService.submit(new WeatherServiceTask("London"));
-            Future<WeatherDetailDto> t3 = executorService.submit(new WeatherServiceTask("Paris"));
-            Future<WeatherDetailDto> t4 = executorService.submit(new WeatherServiceTask("Krakow", 100));
-
-            Optional<WeatherDetailDto> weatherKyiv = getFuture(t1);
-            Optional<WeatherDetailDto> weatherLondon = getFuture(t2);
-            Optional<WeatherDetailDto> weatherParis = getFuture(t3, 5);
-            Optional<WeatherDetailDto> weatherKrakow = getFuture(t4, 20);
-
-            List<WeatherCountryDto> list = new ArrayList<>();
-            weatherKyiv.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
-            weatherLondon.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
-            weatherParis.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
-            weatherKrakow.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
-
-            return new WeatherCountriesDto(list);
+            return allWeatherCountriesFuture.thenApply(this::initWeatherCountriesDtos).get();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
@@ -51,20 +57,24 @@ public class WeatherService {
         }
     }
 
-    private Optional<WeatherDetailDto> getFuture(Future<WeatherDetailDto> call)
-            throws ExecutionException, InterruptedException {
-        return Optional.ofNullable(call.get());
+    private WeatherCountriesDto initWeatherCountriesDtos(List<WeatherServiceTask> tasks) {
+        List<WeatherCountryDto> list = tasks.stream()
+                .map(this::getCall)
+                .filter(Optional::isPresent)
+                .map(optional -> populateWeatherCountryDto(optional.get()))
+                .toList();
+
+        return new WeatherCountriesDto(list);
     }
 
-    private Optional<WeatherDetailDto> getFuture(Future<WeatherDetailDto> call, long timeOut)
-            throws ExecutionException, InterruptedException {
+    private Optional<WeatherDetailDto> getCall(WeatherServiceTask task) {
         try {
-            return Optional.ofNullable(call.get(timeOut, TimeUnit.SECONDS));
-        } catch (TimeoutException e) {
-            System.out.println("Timeout expired");
-        }
+            return task.call();
+        } catch (Exception e) {
+            System.out.println("Exception: " + e);
 
-        return Optional.empty();
+            return Optional.empty();
+        }
     }
 
     private WeatherCountryDto populateWeatherCountryDto(final WeatherDetailDto weather) {

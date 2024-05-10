@@ -6,9 +6,10 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 
-public class WeatherServiceTask implements Callable<WeatherDetailDto> {
+public class WeatherServiceTask implements Callable<Optional<WeatherDetailDto>> {
 
     private static final String OPEN_WEATHER_URI = "https://api.openweathermap.org/data/2.5/weather";
 
@@ -24,9 +25,9 @@ public class WeatherServiceTask implements Callable<WeatherDetailDto> {
 
     private final Integer sleepTime;
 
-    public WeatherServiceTask(String weatherCountry, Integer sleepTime) {
-        this.weatherCountry = weatherCountry;
-        this.sleepTime = sleepTime;
+    public WeatherServiceTask() {
+        this.weatherCountry = "";
+        this.sleepTime = 1;
     }
 
     public WeatherServiceTask(String weatherCountry) {
@@ -35,13 +36,21 @@ public class WeatherServiceTask implements Callable<WeatherDetailDto> {
     }
 
     @Override
-    public WeatherDetailDto call() throws Exception {
+    public Optional<WeatherDetailDto> call() throws Exception {
+        if (weatherCountry.isEmpty()) {
+            return Optional.empty();
+        }
+
         Util.sleepSecond(sleepTime);
-        return restClient.get()
+        WeatherDetailDto body = restClient.get()
                 .uri(getUri())
                 .retrieve()
                 .toEntity(WeatherDetailDto.class)
                 .getBody();
+
+        System.out.println(body.sys().country());
+
+        return Optional.ofNullable(body);
     }
 
     private URI getUri() {
