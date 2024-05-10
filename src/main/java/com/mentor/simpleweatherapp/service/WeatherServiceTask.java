@@ -10,11 +10,11 @@ import java.util.concurrent.Callable;
 
 public class WeatherServiceTask implements Callable<WeatherDetailDto> {
 
-    private final static String OPEN_WEATHER_URI = "https://api.openweathermap.org/data/2.5/weather";
+    private static final String OPEN_WEATHER_URI = "https://api.openweathermap.org/data/2.5/weather";
 
-    private final static String OPEN_WEATHER_API_KEY = "APPID";
+    private static final String OPEN_WEATHER_API_KEY = "APPID";
 
-    private final static String OPEN_WEATHER_API_ID = "188c193b356ef74dc13a886f1a841434";
+    private static final String OPEN_WEATHER_API_ID = "188c193b356ef74dc13a886f1a841434";
 
     private static final String OPEN_WEATHER_COUNTRY_KEY = "q";
 
@@ -22,13 +22,21 @@ public class WeatherServiceTask implements Callable<WeatherDetailDto> {
 
     private final String weatherCountry;
 
+    private final Integer sleepTime;
+
+    public WeatherServiceTask(String weatherCountry, Integer sleepTime) {
+        this.weatherCountry = weatherCountry;
+        this.sleepTime = sleepTime;
+    }
+
     public WeatherServiceTask(String weatherCountry) {
         this.weatherCountry = weatherCountry;
+        this.sleepTime = 10;
     }
 
     @Override
     public WeatherDetailDto call() throws Exception {
-        Util.sleepSecond(10);
+        Util.sleepSecond(sleepTime);
         return restClient.get()
                 .uri(getUri())
                 .retrieve()

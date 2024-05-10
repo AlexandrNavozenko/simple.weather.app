@@ -7,12 +7,15 @@ import com.mentor.simpleweatherapp.util.Util;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @RequiredArgsConstructor
 @Service
@@ -27,18 +30,18 @@ public class WeatherService {
             Future<WeatherDetailDto> t1 = executorService.submit(new WeatherServiceTask("Kyiv"));
             Future<WeatherDetailDto> t2 = executorService.submit(new WeatherServiceTask("London"));
             Future<WeatherDetailDto> t3 = executorService.submit(new WeatherServiceTask("Paris"));
-            Future<WeatherDetailDto> t4 = executorService.submit(new WeatherServiceTask("Krakow"));
+            Future<WeatherDetailDto> t4 = executorService.submit(new WeatherServiceTask("Krakow", 100));
 
-            WeatherDetailDto weatherKyiv = t1.get();
-            WeatherDetailDto weatherLondon = t2.get();
-            WeatherDetailDto weatherParis = t3.get();
-            WeatherDetailDto weatherKrakow = t4.get();
+            Optional<WeatherDetailDto> weatherKyiv = getFuture(t1);
+            Optional<WeatherDetailDto> weatherLondon = getFuture(t2);
+            Optional<WeatherDetailDto> weatherParis = getFuture(t3, 5);
+            Optional<WeatherDetailDto> weatherKrakow = getFuture(t4, 20);
 
-            List<WeatherCountryDto> list = new CopyOnWriteArrayList<>();
-            list.add(populateWeatherCountryDto(weatherKyiv));
-            list.add(populateWeatherCountryDto(weatherLondon));
-            list.add(populateWeatherCountryDto(weatherParis));
-            list.add(populateWeatherCountryDto(weatherKrakow));
+            List<WeatherCountryDto> list = new ArrayList<>();
+            weatherKyiv.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
+            weatherLondon.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
+            weatherParis.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
+            weatherKrakow.ifPresent(weatherDetailDto -> list.add(populateWeatherCountryDto(weatherDetailDto)));
 
             return new WeatherCountriesDto(list);
         } catch (InterruptedException e) {
@@ -46,6 +49,22 @@ public class WeatherService {
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private Optional<WeatherDetailDto> getFuture(Future<WeatherDetailDto> call)
+            throws ExecutionException, InterruptedException {
+        return Optional.ofNullable(call.get());
+    }
+
+    private Optional<WeatherDetailDto> getFuture(Future<WeatherDetailDto> call, long timeOut)
+            throws ExecutionException, InterruptedException {
+        try {
+            return Optional.ofNullable(call.get(timeOut, TimeUnit.SECONDS));
+        } catch (TimeoutException e) {
+            System.out.println("Timeout expired");
+        }
+
+        return Optional.empty();
     }
 
     private WeatherCountryDto populateWeatherCountryDto(final WeatherDetailDto weather) {
